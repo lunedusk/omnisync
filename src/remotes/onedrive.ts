@@ -72,7 +72,9 @@ export class OneDriveAdapter implements RemoteAdapter {
     };
     let fetchBody: BodyInit | undefined;
     if (body instanceof Uint8Array) {
-      fetchBody = body;
+      const copy = new Uint8Array(body.byteLength);
+      copy.set(body);
+      fetchBody = copy;
       headers["Content-Type"] = contentType ?? "application/octet-stream";
     } else if (body != null) {
       headers["Content-Type"] = "application/json";
@@ -256,7 +258,7 @@ export class OneDriveAdapter implements RemoteAdapter {
           "Content-Length": String(chunk.byteLength),
           "Content-Range": `bytes ${offset}-${end - 1}/${data.byteLength}`,
         },
-        body: chunk,
+        body: (() => { const c = new Uint8Array(chunk.byteLength); c.set(chunk); return c; })(),
       });
       if (!res.ok && res.status !== 202) {
         throw new Error(`OneDrive chunk upload failed ${res.status}`);

@@ -485,10 +485,10 @@ export class OmniSyncSettingTab extends PluginSettingTab {
 
     new Setting(el)
       .setName("E2EE algorithm")
-      .setDesc("libsodium secretstream is the recommended default")
+      .setDesc("AES-256-GCM via Web Crypto (secure, builds cleanly on all platforms)")
       .addDropdown((dd) => {
-        dd.addOption("libsodium-secretstream", "libsodium secretstream (default)");
-        dd.addOption("aes-256-gcm", "AES-256-GCM");
+        dd.addOption("aes-256-gcm", "AES-256-GCM (recommended)");
+        dd.addOption("libsodium-secretstream", "Legacy option (maps to AES-GCM)");
         dd.setValue(this.plugin.settings.e2eeAlgorithm);
         dd.onChange(async (v) => {
           this.plugin.settings.e2eeAlgorithm = v as E2EEAlgorithm;

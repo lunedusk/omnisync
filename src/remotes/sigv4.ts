@@ -3,10 +3,13 @@
  * Zero dependencies – works in Obsidian (browser + Electron).
  */
 
+import { asBufferSource } from "../util/bytes";
+
 const encoder = new TextEncoder();
 
 async function sha256Hex(data: Uint8Array | string): Promise<string> {
-  const buf = typeof data === "string" ? encoder.encode(data) : data;
+  const buf =
+    typeof data === "string" ? encoder.encode(data) : asBufferSource(data);
   const hash = await crypto.subtle.digest("SHA-256", buf);
   return bufferToHex(new Uint8Array(hash));
 }
@@ -21,9 +24,11 @@ async function hmac(
   key: ArrayBuffer | Uint8Array,
   data: string
 ): Promise<ArrayBuffer> {
+  const keyData =
+    key instanceof ArrayBuffer ? key : asBufferSource(key as Uint8Array);
   const cryptoKey = await crypto.subtle.importKey(
     "raw",
-    key,
+    keyData,
     { name: "HMAC", hash: "SHA-256" },
     false,
     ["sign"]
@@ -45,15 +50,14 @@ async function getSignatureKey(
 
 export interface SignOptions {
   method: string;
-  url: string; // full URL
+  url: string;
   region: string;
-  service?: string; // default "s3"
+  service?: string;
   accessKeyId: string;
   secretAccessKey: string;
   sessionToken?: string;
   body?: Uint8Array | string | null;
   headers?: Record<string, string>;
-  /** When true, use UNSIGNED-PAYLOAD (common for S3) */
   unsignedPayload?: boolean;
 }
 
@@ -64,9 +68,6 @@ export interface SignedRequest {
   body?: Uint8Array | string | null;
 }
 
-/**
- * Sign a request with AWS SigV4 and return headers + body ready for fetch().
- */
 export async function signRequest(opts: SignOptions): Promise<SignedRequest> {
   const service = opts.service ?? "s3";
   const url = new URL(opts.url);
@@ -100,7 +101,6 @@ export async function signRequest(opts: SignOptions): Promise<SignedRequest> {
     headers["x-amz-content-sha256"] = payloadHash;
   }
 
-  // Canonical headers
   const signedHeaderKeys = Object.keys(headers)
     .map((k) => k.toLowerCase())
     .sort();
@@ -109,7 +109,6 @@ export async function signRequest(opts: SignOptions): Promise<SignedRequest> {
     .join("");
   const signedHeaders = signedHeaderKeys.join(";");
 
-  // Canonical query (sorted)
   const searchParams = new URLSearchParams(url.search);
   const sortedParams = [...searchParams.entries()].sort((a, b) =>
     a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0
@@ -121,10 +120,11 @@ export async function signRequest(opts: SignOptions): Promise<SignedRequest> {
     )
     .join("&");
 
-  const canonicalUri = url.pathname
-    .split("/")
-    .map((seg) => encodeURIComponent(decodeURIComponent(seg)))
-    .join("/") || "/";
+  const canonicalUri =
+    url.pathname
+      .split("/")
+      .map((seg) => encodeURIComponent(decodeURIComponent(seg)))
+      .join("/") || "/";
 
   const canonicalRequest = [
     method,

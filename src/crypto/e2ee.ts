@@ -1,113 +1,87 @@
 /**
  * E2EE layer – ADR 0001
- * Default: libsodium secretstream (XChaCha20-Poly1305)
- * Optional: AES-256-GCM via Web Crypto
- * Key derivation: Argon2id from Recovery Key / passphrase
+ *
+ * Web Crypto only (no libsodium) so the Obsidian CJS bundle builds cleanly.
+ * - KDF: PBKDF2-SHA-256 (600_000 iterations)
+ * - AEAD: AES-256-GCM
+ * - Content hash: SHA-256
+ *
+ * Payload: [magic 1][iv 12][ciphertext+tag]
+ * magic 0x02 = AES-GCM
  */
 
 import type { E2EEAlgorithm } from "../types";
+import { asBufferSource } from "../util/bytes";
 
-let sodium: typeof import("libsodium-wrappers") | null = null;
-
-async function ensureSodium() {
-  if (!sodium) {
-    sodium = await import("libsodium-wrappers");
-    await sodium.ready;
-  }
-  return sodium;
-}
+const MAGIC_AESGCM = 0x02;
+const MAGIC_SECRETSTREAM = 0x01;
+const PBKDF2_ITERATIONS = 600_000;
 
 export interface DerivedKey {
   key: Uint8Array;
   salt: Uint8Array;
 }
 
+function toHex(buf: Uint8Array): string {
+  return Array.from(buf)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+function fromUtf8(s: string): Uint8Array {
+  return new TextEncoder().encode(s);
+}
+
 export async function deriveKey(
   passphrase: string,
   salt?: Uint8Array
 ): Promise<DerivedKey> {
-  const s = await ensureSodium();
-  const actualSalt = salt ?? s.randombytes_buf(16);
-  const key = s.crypto_pwhash(
-    32,
-    passphrase,
-    actualSalt,
-    s.crypto_pwhash_OPSLIMIT_MODERATE,
-    s.crypto_pwhash_MEMLIMIT_MODERATE,
-    s.crypto_pwhash_ALG_ARGON2ID13
+  const actualSalt = salt ?? crypto.getRandomValues(new Uint8Array(16));
+  const baseKey = await crypto.subtle.importKey(
+    "raw",
+    asBufferSource(fromUtf8(passphrase)),
+    "PBKDF2",
+    false,
+    ["deriveBits"]
   );
-  return { key, salt: actualSalt };
+  const bits = await crypto.subtle.deriveBits(
+    {
+      name: "PBKDF2",
+      salt: asBufferSource(actualSalt),
+      iterations: PBKDF2_ITERATIONS,
+      hash: "SHA-256",
+    },
+    baseKey,
+    256
+  );
+  return { key: new Uint8Array(bits), salt: actualSalt };
 }
-
-/** Magic byte prefix so decrypt can detect algorithm */
-const MAGIC_SECRETSTREAM = 0x01;
-const MAGIC_AESGCM = 0x02;
 
 export async function encrypt(
   plain: Uint8Array,
   key: Uint8Array,
-  algorithm: E2EEAlgorithm
+  _algorithm: E2EEAlgorithm
 ): Promise<Uint8Array> {
-  if (algorithm === "aes-256-gcm") {
-    return encryptAesGcm(plain, key);
-  }
-  return encryptSecretstream(plain, key);
+  return encryptAesGcm(plain, key);
 }
 
 export async function decrypt(
   sealed: Uint8Array,
   key: Uint8Array,
-  algorithm: E2EEAlgorithm
+  _algorithm: E2EEAlgorithm
 ): Promise<Uint8Array> {
-  // Prefer magic byte if present (forward compatible)
-  if (sealed.length > 0 && sealed[0] === MAGIC_AESGCM) {
+  if (sealed.length === 0) {
+    throw new Error("Empty ciphertext");
+  }
+  if (sealed[0] === MAGIC_AESGCM) {
     return decryptAesGcm(sealed.slice(1), key);
   }
-  if (sealed.length > 0 && sealed[0] === MAGIC_SECRETSTREAM) {
-    return decryptSecretstream(sealed.slice(1), key);
+  if (sealed[0] === MAGIC_SECRETSTREAM) {
+    throw new Error(
+      "This data was encrypted with libsodium secretstream. Re-sync from OmniSync ≥0.2.2 or re-encrypt."
+    );
   }
-  // Legacy / explicit algorithm
-  if (algorithm === "aes-256-gcm") {
-    return decryptAesGcm(sealed, key);
-  }
-  return decryptSecretstream(sealed, key);
-}
-
-async function encryptSecretstream(
-  plain: Uint8Array,
-  key: Uint8Array
-): Promise<Uint8Array> {
-  const s = await ensureSodium();
-  const res = s.crypto_secretstream_xchacha20poly1305_init_push(key);
-  const header = res.header;
-  const state = res.state;
-  const ciphertext = s.crypto_secretstream_xchacha20poly1305_push(
-    state,
-    plain,
-    null,
-    s.crypto_secretstream_xchacha20poly1305_TAG_FINAL
-  );
-  const out = new Uint8Array(1 + header.length + ciphertext.length);
-  out[0] = MAGIC_SECRETSTREAM;
-  out.set(header, 1);
-  out.set(ciphertext, 1 + header.length);
-  return out;
-}
-
-async function decryptSecretstream(
-  sealed: Uint8Array,
-  key: Uint8Array
-): Promise<Uint8Array> {
-  const s = await ensureSodium();
-  const headerLen = s.crypto_secretstream_xchacha20poly1305_HEADERBYTES;
-  const header = sealed.slice(0, headerLen);
-  const ciphertext = sealed.slice(headerLen);
-  const state = s.crypto_secretstream_xchacha20poly1305_init_pull(header, key);
-  const result = s.crypto_secretstream_xchacha20poly1305_pull(state, ciphertext);
-  if (!result) {
-    throw new Error("Decryption failed – wrong key or corrupted data");
-  }
-  return result.message;
+  return decryptAesGcm(sealed, key);
 }
 
 async function encryptAesGcm(
@@ -117,15 +91,18 @@ async function encryptAesGcm(
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const cryptoKey = await crypto.subtle.importKey(
     "raw",
-    key,
+    asBufferSource(key),
     { name: "AES-GCM" },
     false,
     ["encrypt"]
   );
   const ciphertext = new Uint8Array(
-    await crypto.subtle.encrypt({ name: "AES-GCM", iv }, cryptoKey, plain)
+    await crypto.subtle.encrypt(
+      { name: "AES-GCM", iv },
+      cryptoKey,
+      asBufferSource(plain)
+    )
   );
-  // magic(1) + iv(12) + ciphertext
   const out = new Uint8Array(1 + 12 + ciphertext.length);
   out[0] = MAGIC_AESGCM;
   out.set(iv, 1);
@@ -137,11 +114,14 @@ async function decryptAesGcm(
   sealed: Uint8Array,
   key: Uint8Array
 ): Promise<Uint8Array> {
-  const iv = sealed.slice(0, 12);
-  const ciphertext = sealed.slice(12);
+  if (sealed.length < 13) {
+    throw new Error("Ciphertext too short");
+  }
+  const iv = asBufferSource(sealed.slice(0, 12));
+  const ciphertext = asBufferSource(sealed.slice(12));
   const cryptoKey = await crypto.subtle.importKey(
     "raw",
-    key,
+    asBufferSource(key),
     { name: "AES-GCM" },
     false,
     ["decrypt"]
@@ -159,13 +139,12 @@ async function decryptAesGcm(
 }
 
 export async function generateRecoveryKey(): Promise<string> {
-  const s = await ensureSodium();
-  const bytes = s.randombytes_buf(32);
-  return s.to_base64(bytes, s.base64_variants.URLSAFE_NO_PADDING);
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  let s = btoa(String.fromCharCode(...bytes));
+  return s.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
 export async function contentHash(data: Uint8Array): Promise<string> {
-  const s = await ensureSodium();
-  const hash = s.crypto_generichash(32, data);
-  return s.to_hex(hash);
+  const digest = await crypto.subtle.digest("SHA-256", asBufferSource(data));
+  return toHex(new Uint8Array(digest));
 }

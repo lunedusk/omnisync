@@ -75,7 +75,9 @@ export class GDriveAdapter implements RemoteAdapter {
     };
     let fetchBody: BodyInit | undefined;
     if (body instanceof Uint8Array) {
-      fetchBody = body;
+      const copy = new Uint8Array(body.byteLength);
+      copy.set(body);
+      fetchBody = copy;
       headers["Content-Type"] = "application/octet-stream";
     } else if (body != null) {
       headers["Content-Type"] = "application/json";
@@ -304,7 +306,7 @@ export class GDriveAdapter implements RemoteAdapter {
         Authorization: `Bearer ${token}`,
         "Content-Type": `multipart/related; boundary=${boundary}`,
       },
-      body: full,
+      body: (() => { const c = new Uint8Array(full.byteLength); c.set(full); return c; })(),
     });
     if (!res.ok) {
       const t = await res.text().catch(() => "");

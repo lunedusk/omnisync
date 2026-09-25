@@ -68,7 +68,7 @@ export const DEFAULT_SETTINGS: OmniSyncSettings = {
   remotes: [],
   direction: "bidirectional",
   conflictPolicy: "newer-survives",
-  e2eeAlgorithm: "libsodium-secretstream",
+  e2eeAlgorithm: "aes-256-gcm",
   filters: {
     allowRegex: [],
     ignoreRegex: [String.raw`^\.trash/`, String.raw`^\.git/`],

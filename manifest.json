@@ -1,7 +1,6 @@
 {
   "id": "omnisync",
   "name": "OmniSync",
-  "version": "0.2.1",
   "minAppVersion": "1.5.0",
   "description": "Powerful end-to-end encrypted multi-backend vault sync for Obsidian. Sync the entire vault including settings, themes and plugins with precise direction, conflict policies and real-time triggers.",
   "author": "Lunedusk",

@@ -1,0 +1,34 @@
+{
+  "name": "omnisync",
+  "version": "0.2.1",
+  "description": "OmniSync – powerful E2EE multi-backend vault sync for Obsidian by Lunedusk",
+  "main": "main.js",
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
+    "version": "node version-bump.mjs && git add manifest.json versions.json",
+    "typecheck": "tsc -noEmit -skipLibCheck",
+    "test": "npx --yes tsx src/__tests__/crypto.test.ts && npx --yes tsx src/__tests__/sigv4.test.ts && npx --yes tsx src/__tests__/index.test.ts && npx --yes tsx src/__tests__/diff.test.ts && npx --yes tsx src/__tests__/recovery.test.ts"
+  },
+  "keywords": [
+    "obsidian",
+    "plugin",
+    "sync",
+    "e2ee",
+    "s3",
+    "google-drive",
+    "onedrive"
+  ],
+  "author": "Lunedusk",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "esbuild": "^0.20.0",
+    "obsidian": "latest",
+    "tslib": "^2.6.2",
+    "typescript": "^5.3.3"
+  },
+  "dependencies": {
+    "libsodium-wrappers": "^0.7.13"
+  }
+}

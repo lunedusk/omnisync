@@ -1,0 +1,60 @@
+name: Release OmniSync
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'manifest.json'
+      - 'package.json'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Read version
+        id: version
+        run: |
+          VERSION=$(node -p "require('./manifest.json').version")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Detected version: $VERSION"
+
+      - name: Package plugin
+        run: |
+          mkdir -p dist
+          cp main.js manifest.json dist/
+          if [ -f styles.css ]; then cp styles.css dist/; fi
+          cd dist && zip -r ../omnisync-${{ steps.version.outputs.version }}.zip .
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.version }}
+          name: OmniSync ${{ steps.version.outputs.version }}
+          files: omnisync-${{ steps.version.outputs.version }}.zip
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Optional: add a step here later to publish to the official Obsidian store
+      # once the required secrets / tokens are configured.

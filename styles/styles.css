@@ -1,0 +1,34 @@
+/* OmniSync settings */
+
+.omnisync-settings .omnisync-tab-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 1.2em;
+  border-bottom: 1px solid var(--background-modifier-border);
+  padding-bottom: 6px;
+}
+
+.omnisync-settings .omnisync-tab-bar button {
+  background: transparent;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+}
+
+.omnisync-settings .omnisync-tab-bar button.is-active {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+
+.omnisync-settings .omnisync-tab-pane h2 {
+  margin-top: 0;
+}
+
+.omnisync-settings .omnisync-tab-pane h3 {
+  margin-top: 1.4em;
+  font-size: var(--font-ui-medium);
+}
